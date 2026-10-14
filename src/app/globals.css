@@ -1,0 +1,132 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --bg: 246 247 249;
+  --surface: 255 255 255;
+  --subtle: 241 243 246;
+  --line: 222 226 232;
+  --fg: 17 24 39;
+  --muted: 92 100 114;
+  --accent: 37 99 235;
+  --accent-fg: 255 255 255;
+  --danger: 185 28 28;
+  --warn: 161 98 7;
+  --ok: 21 128 61;
+  --info: 37 99 235;
+  /* Maturity ordinal ramp (validated, light surface) */
+  --lvl-1: #86b6ef; --lvl-fg-1: #0b0b0b;
+  --lvl-2: #5598e7; --lvl-fg-2: #0b0b0b;
+  --lvl-3: #2a78d6; --lvl-fg-3: #ffffff;
+  --lvl-4: #1c5cab; --lvl-fg-4: #ffffff;
+  --lvl-5: #104281; --lvl-fg-5: #ffffff;
+  --hatch: 203 208 216;
+}
+
+:root.dark {
+  color-scheme: dark;
+  --bg: 13 17 23;
+  --surface: 22 27 34;
+  --subtle: 30 36 44;
+  --line: 48 54 61;
+  --fg: 230 237 243;
+  --muted: 150 160 172;
+  --accent: 88 166 255;
+  --accent-fg: 13 17 23;
+  --danger: 248 113 113;
+  --warn: 234 179 8;
+  --ok: 74 222 128;
+  --info: 88 166 255;
+  /* Maturity ordinal ramp (validated, dark surface) */
+  --lvl-1: #9ec5f4; --lvl-fg-1: #0b0b0b;
+  --lvl-2: #6da7ec; --lvl-fg-2: #0b0b0b;
+  --lvl-3: #3987e5; --lvl-fg-3: #0b0b0b;
+  --lvl-4: #256abf; --lvl-fg-4: #ffffff;
+  --lvl-5: #184f95; --lvl-fg-5: #ffffff;
+  --hatch: 70 78 88;
+}
+
+html,
+body {
+  background: rgb(var(--bg));
+  color: rgb(var(--fg));
+}
+
+body {
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  .card {
+    @apply rounded-lg border border-line bg-surface;
+  }
+  .input {
+    @apply w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted/70 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:opacity-60;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium uppercase tracking-wide text-muted;
+  }
+  .th {
+    @apply border-b border-line px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted;
+  }
+  .td {
+    @apply border-b border-line/70 px-3 py-2 align-top text-sm;
+  }
+  .link {
+    @apply text-accent hover:underline;
+  }
+  .prose-sm p {
+    @apply mb-2;
+  }
+}
+
+/* Unassessed cells: distinct texture, never confused with a low score */
+.cell-unassessed {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgb(var(--hatch)) 0,
+    rgb(var(--hatch)) 2px,
+    transparent 2px,
+    transparent 7px
+  );
+  background-color: rgb(var(--subtle));
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body,
+  html {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .card {
+    break-inside: avoid;
+    border-color: #ccc !important;
+  }
+  .print-break {
+    break-before: page;
+  }
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+  .cell-unassessed,
+  [style*="--lvl"] {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

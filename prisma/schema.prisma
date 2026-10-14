@@ -1,0 +1,402 @@
+// Product Security Maturity Hub - data model
+// SQLite for local deployment. To move to PostgreSQL change `provider` to "postgresql",
+// set DATABASE_URL accordingly and run `prisma migrate dev` to create a fresh migration.
+// Enumerated values are stored as strings and validated in the application layer
+// (see src/lib/constants.ts) so the schema stays portable across providers.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Singleton (id = 1) holding organization display and scoring settings.
+model OrganizationSettings {
+  id                       Int      @id @default(1)
+  orgName                  String
+  appTitle                 String
+  /// LATEST = latest non-rejected assessment (drafts are live + provisional); COMPLETED_ONLY = latest completed/reviewed snapshot
+  scoreBasis               String   @default("LATEST")
+  /// Minimum scored coverage (percent) before a score is considered sufficient
+  minCoverageForScore      Float    @default(10)
+  /// Answers at or below this maturity level on HIGH/CRITICAL questions are critical gaps
+  criticalGapMaxLevel      Int      @default(2)
+  /// Whether archived projects are listed in reports (they never contribute to org scores)
+  includeArchivedInReports Boolean  @default(false)
+  /// Decimal places used for organization summary scores (detail views always use 1)
+  orgSummaryDecimals       Int      @default(0)
+  /// JSON map priority -> default SLA in days for remediation target dates
+  remediationSlaDays       String   @default("{\"CRITICAL\":30,\"HIGH\":60,\"MEDIUM\":90,\"LOW\":180}")
+  /// Current framework version number (incremented on every framework change)
+  frameworkVersion         Int      @default(1)
+  updatedAt                DateTime @updatedAt
+}
+
+/// The five maturity levels and their 1-100 anchor scores.
+model MaturityLevel {
+  level       Int    @id
+  label       String
+  description String
+  anchor      Float
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  name               String
+  email              String              @unique
+  /// ADMIN | ASSESSOR | REVIEWER | VIEWER
+  role               String
+  title              String              @default("")
+  active             Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  assessmentsOwned   Assessment[]        @relation("Assessor")
+  assessmentsReviews Assessment[]        @relation("Reviewer")
+  reviews            AssessmentReview[]
+}
+
+/// Projects form a hierarchy: main projects (parentId = null) and subprojects.
+model Project {
+  id              String              @id @default(cuid())
+  key             String              @unique
+  name            String
+  description     String              @default("")
+  businessPurpose String              @default("")
+  productOwner    String              @default("")
+  securityOwner   String              @default("")
+  technicalOwner  String              @default("")
+  /// LOW | MEDIUM | HIGH | CRITICAL
+  criticality     String              @default("HIGH")
+  /// PLANNING | DEVELOPMENT | GA | MAINTENANCE | SUNSET
+  lifecycleStatus String              @default("GA")
+  /// Free-form labels (comma separated)
+  tags            String              @default("")
+  /// Product profile / architecture capabilities driving question applicability (comma separated)
+  capabilities    String              @default("")
+  /// Aggregation weight relative to siblings (subprojects within parent, main projects within organization)
+  weight          Float               @default(1)
+  weightRationale String              @default("")
+  parentId        String?
+  parent          Project?            @relation("Hierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children        Project[]           @relation("Hierarchy")
+  archived        Boolean             @default(false)
+  archivedAt      DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  assessments     Assessment[]
+  actions         RemediationAction[]
+  evidence        Evidence[]
+  snapshots       ScoreSnapshot[]
+
+  @@index([parentId])
+}
+
+model SecurityDomain {
+  id           String              @id @default(cuid())
+  key          String              @unique
+  name         String
+  description  String              @default("")
+  /// GOVERNANCE | DESIGN | IMPLEMENTATION | VERIFICATION | OPERATIONS (SAMM-inspired grouping)
+  sammFunction String
+  order        Int                 @default(0)
+  weight       Float               @default(1)
+  active       Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  practices    SecurityPractice[]
+  actions      RemediationAction[]
+}
+
+model SecurityPractice {
+  id          String              @id @default(cuid())
+  key         String              @unique
+  domainId    String
+  domain      SecurityDomain      @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  name        String
+  description String              @default("")
+  order       Int                 @default(0)
+  weight      Float               @default(1)
+  active      Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  questions   Question[]
+  actions     RemediationAction[]
+
+  @@index([domainId])
+}
+
+/// Stable question identity. Content lives in immutable QuestionVersion rows.
+model Question {
+  id             String               @id @default(cuid())
+  key            String               @unique
+  practiceId     String
+  practice       SecurityPractice     @relation(fields: [practiceId], references: [id], onDelete: Restrict)
+  order          Int                  @default(0)
+  active         Boolean              @default(true)
+  currentVersion Int                  @default(1)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  versions       QuestionVersion[]
+  responses      AssessmentResponse[]
+  actions        RemediationAction[]
+
+  @@index([practiceId])
+}
+
+/// Immutable question definition. Editing a question creates a new version.
+model QuestionVersion {
+  id                  String               @id @default(cuid())
+  questionId          String
+  question            Question             @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  version             Int
+  title               String
+  description         String
+  objective           String               @default("")
+  rationale           String               @default("")
+  scope               String               @default("")
+  guidance            String               @default("")
+  evidenceExamples    String               @default("")
+  evidenceRequired    Boolean              @default(false)
+  weight              Float                @default(1)
+  /// LOW | MEDIUM | HIGH | CRITICAL
+  criticality         String               @default("MEDIUM")
+  mandatory           Boolean              @default(true)
+  /// Comma separated capability tags; empty = applies to every project. Any match applies.
+  applicabilityTags   String               @default("")
+  remediationGuidance String               @default("")
+  references          String               @default("")
+  changeNote          String               @default("")
+  frameworkVersion    Int                  @default(1)
+  createdBy           String               @default("")
+  createdAt           DateTime             @default(now())
+  options             AnswerOption[]
+  responses           AssessmentResponse[]
+
+  @@unique([questionId, version])
+}
+
+model AnswerOption {
+  id                String          @id @default(cuid())
+  questionVersionId String
+  questionVersion   QuestionVersion @relation(fields: [questionVersionId], references: [id], onDelete: Cascade)
+  level             Int
+  label             String
+  description       String
+  criteria          String          @default("")
+  examples          String          @default("")
+  gaps              String          @default("")
+
+  @@unique([questionVersionId, level])
+}
+
+/// Change log of the assessment framework. Completed assessments record the version they used.
+model FrameworkVersion {
+  id            String       @id @default(cuid())
+  version       Int          @unique
+  label         String
+  changeSummary String       @default("")
+  createdBy     String       @default("")
+  createdAt     DateTime     @default(now())
+  assessments   Assessment[]
+}
+
+model Assessment {
+  id                 String               @id @default(cuid())
+  projectId          String
+  project            Project              @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  title              String
+  scope              String               @default("")
+  /// BASELINE | PERIODIC | TARGETED | OVERSIGHT
+  type               String               @default("BASELINE")
+  /// DRAFT | IN_PROGRESS | COMPLETED | REVIEWED | REJECTED
+  status             String               @default("DRAFT")
+  /// Comma separated domain ids emphasised by a targeted reassessment (navigation focus only)
+  focusDomainIds     String               @default("")
+  assessorId         String?
+  assessor           User?                @relation("Assessor", fields: [assessorId], references: [id], onDelete: SetNull)
+  reviewerId         String?
+  reviewer           User?                @relation("Reviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  assessmentDate     DateTime
+  periodStart        DateTime?
+  periodEnd          DateTime?
+  basedOnId          String?
+  basedOn            Assessment?          @relation("Reassessment", fields: [basedOnId], references: [id], onDelete: SetNull)
+  derived            Assessment[]         @relation("Reassessment")
+  frameworkVersionId String?
+  frameworkVersion   FrameworkVersion?    @relation(fields: [frameworkVersionId], references: [id], onDelete: SetNull)
+  submittedAt        DateTime?
+  reviewedAt         DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  responses          AssessmentResponse[]
+  reviews            AssessmentReview[]
+  snapshot           ScoreSnapshot?
+  actions            RemediationAction[]
+
+  @@index([projectId])
+}
+
+model AssessmentResponse {
+  id                String              @id @default(cuid())
+  assessmentId      String
+  assessment        Assessment          @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  questionId        String
+  question          Question            @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  questionVersionId String
+  questionVersion   QuestionVersion     @relation(fields: [questionVersionId], references: [id], onDelete: Restrict)
+  /// UNANSWERED | ANSWERED | NOT_APPLICABLE | UNABLE_TO_DETERMINE | EVIDENCE_MISSING
+  status            String              @default("UNANSWERED")
+  level             Int?
+  naJustification   String              @default("")
+  comment           String              @default("")
+  remediationNotes  String              @default("")
+  evidenceNote      String              @default("")
+  carriedForward    Boolean             @default(false)
+  confirmed         Boolean             @default(true)
+  answeredBy        String              @default("")
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  evidenceLinks     EvidenceLink[]
+  actions           RemediationAction[]
+
+  @@unique([assessmentId, questionId])
+  @@index([questionId])
+}
+
+model AssessmentReview {
+  id           String     @id @default(cuid())
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  reviewerId   String?
+  reviewer     User?      @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviewerName String     @default("")
+  /// APPROVED | REJECTED | COMMENT
+  decision     String
+  comments     String     @default("")
+  createdAt    DateTime   @default(now())
+}
+
+/// Immutable score record captured when an assessment is completed.
+model ScoreSnapshot {
+  id                   String     @id @default(cuid())
+  assessmentId         String     @unique
+  assessment           Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  projectId            String
+  project              Project    @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  assessmentDate       DateTime
+  overallScore         Float?
+  state                String
+  totalQuestions       Int
+  scoredCount          Int
+  naCount              Int
+  unableCount          Int
+  evidenceMissingCount Int
+  unansweredCount      Int
+  completion           Float
+  coverage             Float
+  /// Full JSON score breakdown (domains, practices, weights) as calculated at completion
+  breakdown            String
+  frameworkVersion     Int
+  createdAt            DateTime   @default(now())
+
+  @@index([projectId])
+}
+
+model Evidence {
+  id                 String         @id @default(cuid())
+  projectId          String
+  project            Project        @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  title              String
+  description        String         @default("")
+  /// http(s) URL or internal artifact reference (e.g. "JIRA SEC-123", "Confluence: TM-DLP-v3")
+  reference          String         @default("")
+  type               String         @default("OTHER")
+  ownerName          String         @default("")
+  collectedAt        DateTime?
+  lastVerifiedAt     DateTime?
+  /// PUBLIC | INTERNAL | CONFIDENTIAL | RESTRICTED
+  classification     String         @default("INTERNAL")
+  /// PENDING | VERIFIED | REJECTED
+  verificationStatus String         @default("PENDING")
+  verifiedBy         String         @default("")
+  verificationNote   String         @default("")
+  fileName           String?
+  storedFileName     String?
+  fileSize           Int?
+  mimeType           String?
+  createdBy          String         @default("")
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  links              EvidenceLink[]
+
+  @@index([projectId])
+}
+
+model EvidenceLink {
+  id         String              @id @default(cuid())
+  evidenceId String
+  evidence   Evidence            @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  responseId String?
+  response   AssessmentResponse? @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  actionId   String?
+  action     RemediationAction?  @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  createdAt  DateTime            @default(now())
+
+  @@index([evidenceId])
+  @@index([responseId])
+  @@index([actionId])
+}
+
+model RemediationAction {
+  id                 String              @id @default(cuid())
+  title              String
+  description        String              @default("")
+  projectId          String
+  project            Project             @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  domainId           String?
+  domain             SecurityDomain?     @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  practiceId         String?
+  practice           SecurityPractice?   @relation(fields: [practiceId], references: [id], onDelete: SetNull)
+  questionId         String?
+  question           Question?           @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  assessmentId       String?
+  assessment         Assessment?         @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
+  responseId         String?
+  response           AssessmentResponse? @relation(fields: [responseId], references: [id], onDelete: SetNull)
+  gap                String              @default("")
+  /// CRITICAL | HIGH | MEDIUM | LOW
+  priority           String              @default("MEDIUM")
+  owner              String              @default("")
+  targetDate         DateTime?
+  /// OPEN | IN_PROGRESS | BLOCKED | PENDING_VERIFICATION | CLOSED | ACCEPTED_RISK
+  status             String              @default("OPEN")
+  recommendation     String              @default("")
+  completionEvidence String              @default("")
+  closureNote        String              @default("")
+  closedAt           DateTime?
+  closedBy           String              @default("")
+  riskAcceptedBy     String              @default("")
+  riskAcceptedUntil  DateTime?
+  createdBy          String              @default("")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  evidenceLinks      EvidenceLink[]
+
+  @@index([projectId])
+  @@index([status])
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorName  String   @default("")
+  action     String
+  entityType String
+  entityId   String
+  summary    String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
