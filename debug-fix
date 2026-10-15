@@ -18,3 +18,12 @@ $env:PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING = "1"
 
 If required
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+
+
+
+
+Copy-Item C:\prisma-engines\query_engine-windows.dll.node, C:\prisma-engines\schema-engine-windows.exe -Destination node_modules\@prisma\engines\
+
+
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+Add-Content .env "`nPRISMA_QUERY_ENGINE_LIBRARY=`"./node_modules/@prisma/engines/query_engine-windows.dll.node`""
