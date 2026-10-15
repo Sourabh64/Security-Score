@@ -12,6 +12,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force",
+    "db:clear": "tsx scripts/clear-demo-data.ts",
     "setup": "npm install && prisma generate && prisma migrate deploy && prisma db seed",
     "test": "vitest run",
     "test:watch": "vitest"

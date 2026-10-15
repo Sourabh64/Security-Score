@@ -41,6 +41,7 @@ npm start
 | `npm run db:seed` | **Reset** application data and load the demo portfolio (deletes existing records) |
 | `npm run db:migrate` | Create a new migration after editing `prisma/schema.prisma` (development) |
 | `npm run db:reset` | Drop and recreate the dev database, then seed |
+| `npm run db:clear -- --yes` | **Remove the demo data** (projects, assessments, evidence, actions, audit trail, demo users); keeps the question framework, maturity levels and settings and creates one `Administrator` user |
 
 Data persists in `prisma/dev.db` across browser refreshes and restarts. Evidence attachments are stored in `data/uploads/`.
 
