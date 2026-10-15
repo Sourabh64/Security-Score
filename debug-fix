@@ -1,0 +1,20 @@
+$dest = "C:\prisma-engines"
+New-Item -ItemType Directory -Force $dest | Out-Null
+$base = "https://binaries.prisma.sh/all_commits/c2990dca591cba766e3b7ef5d9e8a84796e47ab7/windows"
+foreach ($f in @(@("query_engine.dll.node.gz","query_engine-windows.dll.node"), @("schema-engine.exe.gz","schema-engine-windows.exe"))) {
+  Invoke-WebRequest -Uri "$base/$($f[0])" -OutFile "$dest\$($f[0])" -UseBasicParsing
+  $in = [IO.File]::OpenRead("$dest\$($f[0])"); $out = [IO.File]::Create("$dest\$($f[1])")
+  $gz = New-Object IO.Compression.GZipStream($in, [IO.Compression.CompressionMode]::Decompress); $gz.CopyTo($out); $gz.Close(); $out.Close(); $in.Close()
+  Remove-Item "$dest\$($f[0])"
+}
+Get-ChildItem $dest | Select-Object Name, Length
+
+
+
+$env:PRISMA_QUERY_ENGINE_LIBRARY = "C:\prisma-engines\query_engine-windows.dll.node"
+$env:PRISMA_SCHEMA_ENGINE_BINARY = "C:\prisma-engines\schema-engine-windows.exe"
+$env:PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING = "1"
+
+
+If required
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
